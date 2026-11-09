@@ -70,25 +70,42 @@ function goHome(){
   const notice=document.createElement('div');notice.className='notice';
   notice.innerHTML='2027학년도 수능 세계사 8시간 총정리 기반 학습 앱. 연습문제는 <b>이 앱이 자체 제작한 문항</b>으로 실제 기출이 아닙니다. 실제 기출 원문은 마지막 챕터의 공식 링크에서 확인하세요.';
   el.appendChild(notice);
+  const tCh=CHAPTERS.filter(c=>!c.linkOnly);
+  const totalCards=tCh.reduce((a,c)=>a+c.facts.length+c.hints.length,0);
+  const knownCards=tCh.reduce((a,c)=>a+c.facts.filter((_,i)=>S.known[fid(c,i)]).length+c.hints.filter((_,i)=>S.known[c.id+':h'+i]).length,0);
+  const pctAll=totalCards?Math.round(knownCards*100/totalCards):0;
+  const ov=document.createElement('div');ov.className='overview';
+  ov.innerHTML=`<div class="ov-label">전체 학습 진행률</div>
+    <div class="ov-row"><span class="ov-pct">${pctAll}%</span><span class="ov-sub">카드 ${knownCards}/${totalCards}장 암기</span></div>
+    <div class="progress"><div style="width:${pctAll}%"></div></div>
+    <div class="ov-stats">
+      <div class="ov-stat"><b>${tCh.length}</b>챕터</div>
+      <div class="ov-stat"><b>${knownCards}</b>암기한 카드</div>
+      <div class="ov-stat"><b>${wrongCount()}</b>오답 남음</div>
+    </div>`;
+  el.appendChild(ov);
   const list=document.createElement('div');list.className='card-list';
+  const ACCENTS=['#64748B','#4F46E5','#0E9C87','#D97706','#DC2626','#7C3AED','#2563EB','#475569'];
   CHAPTERS.forEach(ch=>{
     const total=ch.facts.length+ch.hints.length;
     const d=document.createElement('div');d.className='chapter';
+    d.style.setProperty('--acc',ACCENTS[(typeof ch.n==='number'?ch.n:7)%ACCENTS.length]);
     if(ch.linkOnly){
-      d.innerHTML=`<h3>📎 ${ch.title}</h3><div class="meta">평가원 원본 미러(kicegg)와 공식 사이트로 이동</div>`;
+      d.innerHTML=`<div class="ch-head"><span class="ch-num">🔗</span><h3>${ch.title}</h3></div><div class="meta">평가원 원본 미러(kicegg)와 공식 사이트로 이동</div>`;
       const b=document.createElement('button');b.className='btn secondary';b.textContent='링크 열기';b.onclick=()=>goLinks(ch);d.appendChild(b);
       list.appendChild(d);return;
     }
     const known=ch.facts.filter((_,i)=>S.known[fid(ch,i)]).length;
     const pct=total?Math.round(known*100/total):0;
     const qs=S.quiz[ch.id];
-    d.innerHTML=`<h3>챕터 ${ch.n}. ${ch.title}</h3>
+    d.innerHTML=`<div class="ch-head"><span class="ch-num">${ch.n}</span><h3>${ch.title}</h3></div>
       <div class="meta">${ch.min}분 코스 · 카드 ${total}장 · 퀴즈 ${ch.mc.length+ch.selfcheck.length+Math.min(8,ch.facts.length)}문항${qs?` · 최근 퀴즈 ${qs.c}/${qs.t}`:''}</div>
       <div class="progress"><div style="width:${pct}%"></div></div>
-      <div class="meta">카드 암기 ${known}/${total}</div>`;
-    const b1=document.createElement('button');b1.className='btn';b1.textContent='🃏 카드 학습';b1.onclick=()=>goStudy(ch);
-    const b2=document.createElement('button');b2.className='btn secondary';b2.textContent='✏️ 바로 문제 풀기';b2.onclick=()=>goQuiz(ch);
-    d.appendChild(b1);d.appendChild(b2);list.appendChild(d);
+      <div class="meta${known===total&&total>0?' done':''}">카드 암기 ${known}/${total}${known===total&&total>0?' ✓':''}</div>`;
+    const acts=document.createElement('div');acts.className='ch-actions';
+    const b1=document.createElement('button');b1.className='btn';b1.innerHTML='<span class="b-ico">🃏</span> 카드 학습';b1.onclick=()=>goStudy(ch);
+    const b2=document.createElement('button');b2.className='btn secondary';b2.innerHTML='<span class="b-ico">✏️</span> 퀴즈';b2.onclick=()=>goQuiz(ch);
+    acts.appendChild(b1);acts.appendChild(b2);d.appendChild(acts);list.appendChild(d);
   });
   el.appendChild(list);
   const wb=document.createElement('button');wb.className='btn ghost';wb.textContent=`오답 다시 풀기 (${wrongCount()})`;wb.onclick=()=>goWrong();el.appendChild(wb);
@@ -103,7 +120,7 @@ function goLinks(ch){
   el.appendChild(n);
   EXAMS.forEach(([label,url])=>{
     const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';
-    a.className='choice';a.style.textDecoration='none';a.style.color='#0d3b66';a.textContent='🔗 '+label;el.appendChild(a);
+    a.className='linkcard';a.textContent='🔗 '+label;el.appendChild(a);
   });
 }
 
@@ -138,13 +155,18 @@ function goStudy(ch){
       <div class="front">${c.front}</div>
       <div class="back">${c.back||'암기 힌트'}</div>
       <div class="note">${c.note}</div>
-      <div class="hinttap">탭하면 ${c.back?'정답·설명':'내용'} 표시</div>`;
+      <div class="hinttap">탭하면 ${c.back?'정답·설명':'내용'} 표시</div>
+      <span class="stamp stamp-know">알아요</span><span class="stamp stamp-again">다시</span>`;
     area.appendChild(card);
+    const stK=card.querySelector('.stamp-know'),stA=card.querySelector('.stamp-again');
     let sx=0,dx=0,dragging=false,moved=false;
     card.addEventListener('pointerdown',e=>{dragging=true;moved=false;sx=e.clientX;card.setPointerCapture(e.pointerId)});
-    card.addEventListener('pointermove',e=>{if(!dragging)return;dx=e.clientX-sx;if(Math.abs(dx)>8)moved=true;card.style.transform=`translateX(${dx}px) rotate(${dx/25}deg)`});
+    card.addEventListener('pointermove',e=>{if(!dragging)return;dx=e.clientX-sx;if(Math.abs(dx)>8)moved=true;
+      card.style.transform=`translateX(${dx}px) rotate(${dx/25}deg)`;
+      const o=Math.min(1,Math.abs(dx)/90);
+      stK.style.opacity=dx>0?o:0;stA.style.opacity=dx<0?o:0});
     card.addEventListener('pointerup',()=>{
-      dragging=false;card.style.transform='';
+      dragging=false;card.style.transform='';stK.style.opacity=0;stA.style.opacity=0;
       if(dx>80)return choose(true);
       if(dx<-80)return choose(false);
       if(!moved)card.classList.toggle('flipped');
@@ -189,7 +211,10 @@ function goQuiz(ch,questions,title){
     if(item.type==='mc'){
       let answered=false;
       item.c.forEach((text,ci)=>{
-        const b=document.createElement('button');b.className='choice';b.textContent=`${'①②③④⑤'[ci]} ${text}`;
+        const b=document.createElement('button');b.className='choice';
+        const nm=document.createElement('span');nm.className='num';nm.textContent='①②③④⑤'[ci];
+        const tx=document.createElement('span');tx.textContent=text;
+        b.appendChild(nm);b.appendChild(tx);
         b.onclick=()=>{
           if(answered)return;answered=true;
           const ok=ci===item.ans;
@@ -198,9 +223,9 @@ function goQuiz(ch,questions,title){
             else if(xi===ci)x.classList.add('wrongpick')});
           if(ok){correct++;markRight(item.id)}else{markWrong(item.id)}
           const ex=document.createElement('div');ex.className='explain';
-          ex.innerHTML=`${ok?'✅ 정답!':'❌ 오답'} ${item.exp}<div class="src">${item.src}</div>`;
+          ex.innerHTML=`<b class="res ${ok?'ok':'no'}">${ok?'정답':'오답'}</b> · ${item.exp}<div class="src">${item.src}</div>`;
           el.appendChild(ex);
-          const nx=document.createElement('button');nx.className='btn';nx.textContent=i+1<qs.length?'다음 문제':'결과 보기';
+          const nx=document.createElement('button');nx.className='btn';nx.id='nextBtn';nx.textContent=i+1<qs.length?'다음 문제':'결과 보기';
           nx.onclick=()=>{i++;render()};el.appendChild(nx);
         };
         el.appendChild(b);
